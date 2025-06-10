@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Matriz de LEDs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Controle de Matriz de LEDs</h1>
+        <p>Controle sua matriz de LEDs em tempo real</p>
+    </header>
+
+    <main>
+        <div class="control-panel">
+            <h2>Terminal de Controle</h2>
+            
+            <div id="connectionStatus" class="status disconnected">
+                Desconectado do ESP32
+            </div>
+            
+            <input type="text" id="message" placeholder="Digite sua mensagem para a matriz LED" autofocus>
+            <div>
+                <button id="sendButton">Enviar Mensagem</button>
+                <button id="clearButton">Limpar</button>
+            </div>
+            
+            <h3>Log de Mensagens:</h3>
+            <div id="output"></div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
