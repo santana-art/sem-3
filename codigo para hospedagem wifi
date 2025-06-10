@@ -1,0 +1,98 @@
+//código para wi-fi roteador 
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+#include <SPIFFS.h>
+
+
+const char* ssid = "Cronopios_5GHz";       
+const char* password = "gratidao";   
+
+
+WebServer server(80);           
+WebSocketsServer webSocket(81); 
+
+
+void handleRoot() {
+  File file = SPIFFS.open("/index.html", "r");
+  server.streamFile(file, "text/html");
+  file.close();
+}
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  if(type == WStype_TEXT) {
+    String message = (char*)payload;
+    Serial.printf("[Cliente %u] Mensagem: %s\n", num, message.c_str());
+    webSocket.sendTXT(num, "ESP32 recebeu: " + message);
+  }
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000); 
+
+  // 1. Inicia SPIFFS (para o HTML)
+  if(!SPIFFS.begin(true)) {
+    Serial.println("Erro ao iniciar SPIFFS!");
+    while(true) delay(1000);
+  }
+
+  // 2. Conexão Wi-Fi com tratamento robusto
+  Serial.println("\n=== Modo Wi-Fi ===");
+  Serial.print("Conectando a: ");
+  Serial.println(ssid);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Melhora estabilidade
+  WiFi.begin(ssid, password);
+
+  unsigned long startTime = millis();
+  while(WiFi.status() != WL_CONNECTED && millis() - startTime < 30000) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  // Verificação final
+  if(WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nFalha na conexão! Verifique:");
+    Serial.println("- Credenciais corretas");
+    Serial.println("- Rede 2.4GHz ativa");
+    Serial.println("- Sinal adequado");
+    Serial.print("MAC do ESP32: ");
+    Serial.println(WiFi.macAddress());
+    return;
+  }
+
+  // 3. Serviços
+  server.on("/", handleRoot);
+  server.begin();
+  
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  // 4. Informações de conexão
+  Serial.println("\n=== Conectado! ===");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.println("Use o navegador em: http://" + WiFi.localIP().toString());
+}
+
+// ===== Loop ===== //
+void loop() {
+  server.handleClient();
+  webSocket.loop();
+  
+  // Monitora queda de conexão
+  static unsigned long lastCheck = 0;
+  if(millis() - lastCheck > 5000) {
+    if(WiFi.status() != WL_CONNECTED) {
+      Serial.println("Conexão perdida! Reconectando...");
+      WiFi.reconnect();
+    }
+    lastCheck = millis();
+  }
+}
