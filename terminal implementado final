@@ -1,0 +1,267 @@
+//código para wi-fi roteador 
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+
+const char* ssid = "iPhone de Robert";       
+const char* password = "123456789";   
+
+WebServer server(80);           
+WebSocketsServer webSocket(81); 
+
+const char* htmlPage = R"rawliteral(
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Matriz de LEDs</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        header {
+            background: #007BFF;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+        }
+        main {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .control-panel {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background: #007BFF;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            margin: 8px 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #output {
+            border: 1px solid #ddd;
+            min-height: 100px;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 400px;
+            text-align: left;
+            font-family: monospace;
+            background: #f9f9f9;
+            border-radius: 4px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Controle de Matriz de LEDs</h1>
+        <p>Controle sua matriz de LEDs em tempo real</p>
+    </header>
+
+    <main>
+        <div class="control-panel">
+            <h2>Terminal de Controle</h2>
+            
+            <div id="connectionStatus" class="status disconnected">
+                Desconectado do ESP32
+            </div>
+            
+            <input type="text" id="message" placeholder="Digite sua mensagem para a matriz LED" autofocus>
+            <div>
+                <button onclick="sendMessage()">Enviar Mensagem</button>
+                <button onclick="clearMessage()">Limpar</button>
+            </div>
+            
+            <h3>Log de Mensagens:</h3>
+            <div id="output"></div>
+        </div>
+    </main>
+
+    <script>
+        // Configuração do WebSocket - IP será atualizado automaticamente
+        const esp32Ip = window.location.hostname; // Usa o mesmo IP da página
+        const wsPort = "81";
+        var ws = new WebSocket(`ws://${esp32Ip}:${wsPort}/ws`);
+        
+        // Elementos da interface
+        const messageInput = document.getElementById("message");
+        const outputDiv = document.getElementById("output");
+        const statusDiv = document.getElementById("connectionStatus");
+
+        // Evento ao pressionar Enter
+        messageInput.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+
+        // Função para enviar mensagem
+        function sendMessage() {
+            const msg = messageInput.value.trim();
+            if (msg && ws.readyState === WebSocket.OPEN) {
+                ws.send(msg);
+                addToOutput(`Você: ${msg}`);
+                messageInput.value = "";
+            } else if (!msg) {
+                alert("Por favor, digite uma mensagem!");
+            }
+        }
+
+        // Função para limpar mensagem
+        function clearMessage() {
+            messageInput.value = "";
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send("clear"); // Envia comando especial para limpar a matriz
+                addToOutput("Sistema: Mensagem limpa");
+            }
+        }
+
+        // Adiciona mensagem ao log
+        function addToOutput(message) {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            outputDiv.innerHTML += `<span style="color: #666;">[${timeString}]</span> ${message}<br>`;
+            outputDiv.scrollTop = outputDiv.scrollHeight; // Auto-scroll
+        }
+
+        // Eventos do WebSocket
+        ws.onopen = function() {
+            statusDiv.textContent = "Conectado ao ESP32";
+            statusDiv.className = "status connected";
+            addToOutput("Sistema: Conectado ao ESP32");
+        };
+
+        ws.onmessage = function(event) {
+            addToOutput(`ESP32: ${event.data}`);
+        };
+
+        ws.onerror = function(error) {
+            statusDiv.textContent = "Erro na conexão";
+            statusDiv.className = "status disconnected";
+            addToOutput("Sistema: Erro na conexão");
+            console.error("WebSocket error:", error);
+        };
+
+        ws.onclose = function() {
+            statusDiv.textContent = "Desconectado do ESP32";
+            statusDiv.className = "status disconnected";
+            addToOutput("Sistema: Conexão fechada");
+        };
+    </script>
+</body>
+</html>
+)rawliteral";
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  if(type == WStype_TEXT) {
+    String message = (char*)payload;
+    Serial.printf("[Cliente %u] Mensagem: %s\n", num, message.c_str());
+    webSocket.sendTXT(num, "ESP32 recebeu: " + message);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000); 
+
+  // 1. Conexão Wi-Fi
+  Serial.println("\n=== Modo Wi-Fi ===");
+  Serial.print("Conectando a: ");
+  Serial.println(ssid);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(ssid, password);
+
+  unsigned long startTime = millis();
+  while(WiFi.status() != WL_CONNECTED && millis() - startTime < 30000) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  if(WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nFalha na conexão! Verifique:");
+    Serial.println("- Credenciais corretas");
+    Serial.println("- Rede 2.4GHz ativa");
+    Serial.println("- Sinal adequado");
+    Serial.print("MAC do ESP32: ");
+    Serial.println(WiFi.macAddress());
+    return;
+  }
+
+  // 2. Configuração do servidor web
+  server.on("/", []() {
+    server.send(200, "text/html", htmlPage);
+  });
+
+  server.begin();
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  // 3. Informações de conexão
+  Serial.println("\n=== Conectado! ===");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.println("Use o navegador em: http://" + WiFi.localIP().toString());
+}
+
+void loop() {
+  server.handleClient();
+  webSocket.loop();
+  
+  static unsigned long lastCheck = 0;
+  if(millis() - lastCheck > 5000) {
+    if(WiFi.status() != WL_CONNECTED) {
+      Serial.println("Conexão perdida! Reconectando...");
+      WiFi.reconnect();
+    }
+    lastCheck = millis();
+  }
+}
